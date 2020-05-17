@@ -1,13 +1,13 @@
 import os
+import sys
 import random as rnd
 import numpy as np
 import tensorflow as tf
 #import tensorflow.keras.backend as K
-#import tensorflow_addons as tfa
+import tensorflow_addons as tfa
 import matplotlib.pyplot as plt
 import pandas as pd
 #tf.config.experimental_run_functions_eagerly(True)
-
 
 # Check the TensorFlow documentation (https://www.tensorflow.org/api_docs/python/tf/keras/metrics/Metric) to see how to create custom metrics. 
 # Specifically, the following metrics were adapted from the 'BinaryTruePositives' class of the TensorFlow documentation. 
@@ -244,8 +244,8 @@ print('Done!')
 print('Loading convnet\'s architecture from disk...')
 
 jsonfiles_path = os.path.join(storage_path, 'JSONFILES')
-jsonfile_name = os.path.join(jsonfiles_path, 'model.json')
-jsonfile = open(jsonfile_name, 'r')
+jsonfname = os.path.join(jsonfiles_path, 'convnet.json')
+jsonfile = open(jsonfname, 'r')
 jsondata = jsonfile.read()
 convnet = tf.keras.models.model_from_json(jsondata)
 jsonfile.close()
@@ -259,22 +259,30 @@ print('Done!')
 print('Loading convnet\'s weights from disk...')
 
 h5files_path = os.path.join(storage_path, 'H5FILES')
-h5file_name = os.path.join(h5files_path, 'model.h5')
-convnet.load_weights(h5file_name)
+
+# checking if there are previous executions of steps 1-3 and loading the weights from the last named file if that is the case. 
+h5files = [file for file in sorted(os.listdir(h5files_path)) if file.startswith('weights-steps123')]
+if len(h5files) > 0: # if there is at least one h5 file in the directory... 
+	last_h5filename = os.path.join(h5files_path, h5files[-1])
+	print('Steps 1-3: Loading weights from', last_h5filename)
+	convnet.load_weights(last_h5filename)
+else:
+	print('No previous execution of steps 1-3 was found!')
+	sys.exit()
 
 print('Done!')
 
-# =======================
-# CONVNET OLD EVALUATION:
-# =======================
+# ===================================
+# CONVNET EVALUATION AFTER STEPS 1-3:
+# ===================================
 
 convnet.compile(
-	loss=tf.keras.losses.BinaryCrossentropy(),
+	loss=tfa.losses.SigmoidFocalCrossEntropy(alpha=0.75, gamma=2.0),
 	optimizer=tf.keras.optimizers.RMSprop(lr=2e-5),
 	metrics=[GMean(), tf.keras.metrics.Recall(name='sens'), Specificity(name='spec')]
 )
 
-print('Convnet evaluation before step 4: ')
+print('Convnet evaluation just before step 4:')
 
 convnet.evaluate(valid_data, valid_labels)
 
@@ -282,7 +290,7 @@ convnet.evaluate(valid_data, valid_labels)
 # STEP 4:
 #========
 
-print('The number os trainable weights before unfreeze some layers in the base network is', len(convnet.trainable_weights))
+print('The number os trainable tensors before unfreeze some layers in the convbase part of convnet is', len(convnet.trainable_weights))
 
 conv_base = convnet.layers[0]
 conv_base.trainable = True
@@ -296,7 +304,7 @@ for layer in conv_base.layers:
 	else:
 		layer.trainable = False
 
-print('The number os trainable weights after unfreeze some layers in the base network is', len(convnet.trainable_weights))
+print('The number os trainable tensors after unfreeze some layers in the convbase part of convnet is', len(convnet.trainable_weights))
 
 #========
 # STEP 5:
@@ -305,15 +313,16 @@ print('The number os trainable weights after unfreeze some layers in the base ne
 batch_size = 32
 initial_epoch = 0
 
-# checks if there are prior executions of steps 4 and 5 and load the last one if that is the case. 
+# checking if there are previous executions of steps 4-5 and loading the weights from the last named file if that is the case. 
 h5files = [file for file in sorted(os.listdir(h5files_path)) if file.startswith('weights-steps45')]
 if len(h5files) > 0: # if there is at least one h5 file in the directory... 
 	last_h5filename = os.path.join(h5files_path, h5files[-1])
+	print('Steps 4-5: Loading weights from', last_h5filename)
 	convnet.load_weights(last_h5filename)
 	initial_epoch = int(last_h5filename[-5:-3])-1 # -1 to repeat the last execution.
 
 convnet.compile(
-	loss=tf.keras.losses.BinaryCrossentropy(),
+	loss=tfa.losses.SigmoidFocalCrossEntropy(alpha=0.75, gamma=2.0),
 	optimizer=tf.keras.optimizers.RMSprop(lr=1e-5),
 	metrics=[GMean(), tf.keras.metrics.Recall(name='sens'), Specificity(name='spec')]
 )
@@ -332,10 +341,11 @@ history = convnet.fit(
 	initial_epoch=initial_epoch
 )
 
-# =======================
-# CONVNET NEW EVALUATION:
-# =======================
 
-print('Model evaluation after step 5:')
+# ===================================
+# CONVNET EVALUATION AFTER STEPS 4-5:
+# ===================================
+
+print('Convnet evaluation after step 5:')
 
 convnet.evaluate(valid_data, valid_labels)

@@ -72,7 +72,7 @@ def get_dataset(dataset_path, target_net):
 		print('target_net does not match any of the options!')
 		sys.exit()
 
-	# Discovering dataset size:
+	# Discovering the dataset size:
 	folders_list = sorted(os.listdir(dataset_path))
 	dataset_len = 0
 	for folder_name in folders_list:
